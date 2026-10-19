@@ -1,6 +1,71 @@
 // 全局常量配置
-const PROXY_URL = 'https://images.weserv.nl/?url=';    // 采用公开反向代理，彻底解决豆瓣等资源的防盗链与 418 拦截
-const IMAGE_PROXY_URL = 'https://images.weserv.nl/?url='; // 备用显式图片代理前缀
+const PROXY_URL = '/proxy/';    // 适用于 Cloudflare, Netlify (带重写), Vercel (带重写)
+
+// ===== 图片反代配置（豆瓣海报 418 修复）=====
+// 指向 Pages Function: functions/img.js
+const IMG_PROXY_URL = '/img?url=';
+
+// 豆瓣系图片域名（命中这些域名的图片一律走 /img 反代）
+const DOUBAN_IMG_HOST = /(^|\.)(doubanio\.com|douban\.com|dbstatic\.com)$/i;
+
+// 本地占位图（data URI，不再依赖任何外链，避免占位图本身也挂掉）
+window.IMG_PLACEHOLDER =
+  'data:image/svg+xml;charset=utf-8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">' +
+      '<rect width="300" height="450" fill="#1a1a1a"/>' +
+      '<path d="M120 200h60v40h-60z" fill="none" stroke="#555" stroke-width="3"/>' +
+      '<text x="150" y="285" fill="#666" font-size="15" font-family="sans-serif" text-anchor="middle">暂无封面</text>' +
+      '</svg>'
+  );
+
+/**
+ * 把任意图片地址转成「本站可安全加载」的地址。
+ * 豆瓣系 → /img?url=xxx；其它（采集站）→ 原样返回，不额外中转。
+ */
+function proxyImage(url) {
+  if (!url || typeof url !== 'string') return window.IMG_PLACEHOLDER;
+  const u = url.trim();
+  if (!u) return window.IMG_PLACEHOLDER;
+  // 已经是本站地址 / data / blob，直接放行
+  if (u.startsWith('/') || u.startsWith('data:') || u.startsWith('blob:')) return u;
+  if (u.startsWith(IMG_PROXY_URL)) return u;
+
+  let host = '';
+  try {
+    host = new URL(u).hostname;
+  } catch (_) {
+    return window.IMG_PLACEHOLDER;
+  }
+  if (DOUBAN_IMG_HOST.test(host)) return IMG_PROXY_URL + encodeURIComponent(u);
+  return u;
+}
+
+// 挂到 window，供内联 onerror / 其它脚本调用
+window.proxyImage = proxyImage;
+window.IMG_PROXY_URL = IMG_PROXY_URL;
+
+// 兜底网：万一以后新增的渲染逻辑漏了 proxyImage()，坏图会自动改写到本站反代
+window.addEventListener(
+  'error',
+  function (e) {
+    const el = e.target;
+    if (!el || el.tagName !== 'IMG') return;
+    const src = el.getAttribute('src') || '';
+    if (!src || src.startsWith(IMG_PROXY_URL) || src.startsWith('data:')) return;
+    try {
+      const host = new URL(src, location.href).hostname;
+      if (DOUBAN_IMG_HOST.test(host)) {
+        el.src = IMG_PROXY_URL + encodeURIComponent(src);
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  },
+  true
+);
+// ===== 图片反代配置结束 =====
+// const HOPLAYER_URL = 'https://hoplayer.com/index.html';
 const SEARCH_HISTORY_KEY = 'videoSearchHistory';
 const MAX_HISTORY_ITEMS = 5;
 
@@ -133,16 +198,17 @@ const API_SITES = {
 
 // 添加聚合搜索的配置选项
 const AGGREGATED_SEARCH_CONFIG = {
-    enabled: true,               // 是否启用聚合搜索
-    timeout: 8000,              // 单个源超时时间（毫秒）
+    enabled: true,             // 是否启用聚合搜索
+    timeout: 8000,            // 单个源超时时间（毫秒）
     maxResults: 10000,          // 最大结果数量
-    parallelRequests: true,     // 是否并行请求所有源
-    showSourceBadges: true      // 是否显示来源徽章
+    parallelRequests: true,   // 是否并行请求所有源
+    showSourceBadges: true    // 是否显示来源徽章
 };
 
 // 抽象API请求配置
 const API_CONFIG = {
     search: {
+    	// 修改搜索接口为返回更多详细数据（包括视频封面、简介和播放列表）
         path: '/api.php/provide/vod/?ac=videolist&wd=',
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -150,6 +216,7 @@ const API_CONFIG = {
         }
     },
     detail: {
+    	// 修改详情接口也使用videolist接口，但是通过ID查询，减少请求次数
         path: '/api.php/provide/vod/?ac=videolist&ids=',
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -162,7 +229,7 @@ const API_CONFIG = {
 const M3U8_PATTERN = /\$https?:\/\/[^"'\s]+?\.m3u8/g;
 
 // 添加自定义播放器URL
-const CUSTOM_PLAYER_URL = 'player.html';
+const CUSTOM_PLAYER_URL = 'player.html'; // 使用相对路径引用本地player.html
 
 // 增加视频播放相关配置
 const PLAYER_CONFIG = {
@@ -191,6 +258,7 @@ const SECURITY_CONFIG = {
     enableXSSProtection: true,  // 是否启用XSS保护
     sanitizeUrls: true,         // 是否清理URL
     maxQueryLength: 100,        // 最大搜索长度
+    // allowedApiDomains 不再需要，因为所有请求都通过内部代理
 };
 
 // 添加多个自定义API源的配置
