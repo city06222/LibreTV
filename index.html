@@ -442,5 +442,34 @@
             }
         });
     </script>
+<script>
+  // 强制将所有豆瓣图片重定向到可用代理节点
+  const DOUBAN_PROXY = 'https://images.weserv.nl/?url=';
+  const fixDouban = (img) => {
+    if (img && img.src && img.src.includes('doubanio.com') && !img.src.includes('weserv.nl')) {
+      img.src = DOUBAN_PROXY + encodeURIComponent(img.src);
+    }
+  };
+
+  // 1. 监听所有动态插入的 DOM
+  new MutationObserver((mutations) => {
+    mutations.forEach((m) => {
+      m.addedNodes.forEach((node) => {
+        if (node.tagName === 'IMG') fixDouban(node);
+        else if (node.querySelectorAll) node.querySelectorAll('img').forEach(fixDouban);
+      });
+      if (m.type === 'attributes' && m.attributeName === 'src') {
+        fixDouban(m.target);
+      }
+    });
+  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+
+  // 2. 页面载入定时扫尾
+  window.addEventListener('load', () => {
+    setInterval(() => {
+      document.querySelectorAll('img[src*="doubanio.com"]').forEach(fixDouban);
+    }, 500);
+  });
+</script>    
 </body>
 </html>
