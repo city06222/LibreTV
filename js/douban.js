@@ -401,14 +401,14 @@ function renderDoubanCards(data, container) {
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
             
-            // 核心修改点：直接在首次发起请求时通过镜像代理加载，杜绝原生 418 拦截
+            // 核心修改：只走图片反代，并且不让其 onerror 回退到原生豆瓣，彻底杜绝 418 请求
             const proxiedCoverUrl = DOUBAN_IMAGE_PROXY + encodeURIComponent(item.cover);
             
             card.innerHTML = `
                 <div class="relative w-full aspect-[2/3] overflow-hidden cursor-pointer" onclick="fillAndSearchWithDouban('${safeTitle}')">
                     <img src="${proxiedCoverUrl}" alt="${safeTitle}" 
                         class="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
-                        onerror="this.onerror=null; this.src='${item.cover}'; this.classList.add('object-contain');"
+                        onerror="this.onerror=null; this.src='https://images.icon-icons.com/38/PNG/512/retrotv_5520.png'; this.classList.add('object-contain', 'p-4');"
                         loading="lazy">
                     <div class="absolute inset-0 bg-gradient-to-t from-black to-transparent opacity-60"></div>
                     <div class="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded-sm">
